@@ -1,0 +1,3 @@
+[submodule "strategi"]
+	path = strategi
+	url = git@github.com:johanesPao/volter_strategy.git
