@@ -1,0 +1,7 @@
+services:
+  volter:
+    environment:
+      - ENV_MODE=development
+    command: [ "python", "-u", "-m", "utilitas.hot_reload" ]
+    volumes:
+      - .:/aplikasi
