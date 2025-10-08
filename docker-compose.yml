@@ -17,7 +17,7 @@ services:
       - app_net
 
   volter:
-    build: .
+    image: ${DOCKER_IMAGE}
     depends_on:
       - database
     environment:
