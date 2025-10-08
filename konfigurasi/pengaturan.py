@@ -18,7 +18,7 @@ class ParameterDB:
     PORT: str
     USERNAME: str
     PASSWORD: str
-    DATABASE: str
+    NAME: str
 
 
 TZ = 7  # timezone
@@ -30,11 +30,11 @@ DB = ParameterDB(
     PORT=os.getenv("DB_PORT"),
     USERNAME=os.getenv("DB_USER"),
     PASSWORD=os.getenv("DB_PASS"),
-    DATABASE=os.getenv("DB_NAME"),
+    NAME=os.getenv("DB_NAME"),
 )
 
 DATABASE_URL = (
-    f"postgresql://{DB.USERNAME}:{quote(DB.PASSWORD)}@database:{DB.PORT}/{DB.DATABASE}"
+    f"postgresql://{DB.USERNAME}:{quote(DB.PASSWORD)}@{DB.HOST}:{DB.PORT}/{DB.NAME}"
 )
 
 ENV_MODE = os.getenv("ENV_MODE")
