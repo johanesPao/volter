@@ -8,6 +8,7 @@ on:
 jobs:
   build-dan-push:
     runs-on: ubuntu-latest
+    environment: development
 
     steps:
       - name: Check out code di repository
@@ -22,27 +23,48 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build dan push image
+      - name: Cache lapisan docker container
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build dan push image (cached)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:${{ github.ref_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:${{ github.ref.name == 'main' && 'latest' || format('nightly-{0}', github.sha) }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+        
+      - name: Pindahkan cache baru
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
   deploy-production:
     needs: build-dan-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    environment: production
 
     steps:
+      - name: Decode SSH key
+        run: |
+          echo "${{ secrets.PROD_SSH_KEY_B64 }}" | base64 --decode > private_key.pem
+          chmod 600 private_key.pem
+        shell: bash
+
       - name: SSH dan deploy ke server produksi
         uses: appleboy/ssh-action@v1
         with:
             host: ${{ secrets.PROD_HOST }}
             username: ${{ secrets.PROD_USER }}
-            key: ${{ secrets.PROD_SSH_KEY }}
+            key_path: private_key.pem
             script: |
               # Buat folder jika tidak eksis
               mkdir -p ~/${{ secrets.APP_NAME }}
@@ -50,16 +72,22 @@ jobs:
 
               # Buat .env file dari GitHub secrets
               cat > .env <<EOL
-POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@database:5432/${{ secrets.POSTGRES_DB }}
-EOL
-              # Pull repo
-              git clone git@github.com:johanesPao/volter.git .
+              DB_HOST=${{ secrets.DB_HOST }}
+              DB_PORT=${{ secrets.DB_PORT }}
+              DB_USER=${{ secrets.DB_USER }}
+              DB_PASS=${{ secrets.DB_PASS }}
+              DB_NAME=${{ secrets.DB_NAME }}
+              DOCKER_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:latest
+              API_KEY=${{ secrets.API_KEY }}
+              API_SECRET_KEY=${{ secrets.API_SECRET_KEY}}
+              EOL
+              
+              # curl docker-compose.yml di branch main
+              curl -fsSL -o docker-compose.yml \
+                https://raw.githubusercontent.com/johanesPao/volter/main/docker-compose.yml
               
               # Stop container, prune images, start new container
               docker compose down
               docker image prune -a -f
-              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:main
+              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ secrets.APP_NAME }}:latest
               docker compose up -d
